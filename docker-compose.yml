@@ -1,0 +1,82 @@
+services:
+  # PHP Service
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: orders-app
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - .:/var/www
+      - ./storage:/var/www/storage
+    depends_on:
+      - db
+    networks:
+      - orders-network
+    environment:
+      DB_HOST: db
+      DB_DATABASE: orders_management
+      DB_USERNAME: orders_user
+      DB_PASSWORD: orders_password
+
+  # Nginx Service
+  webserver:
+    image: nginx:alpine
+    container_name: orders-webserver
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    volumes:
+      - .:/var/www
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d
+      - ./storage/logs:/var/www/storage/logs
+    networks:
+      - orders-network
+
+  # MySQL Service
+  db:
+    image: mysql:8.0
+    platform: linux/arm64/v8
+    container_name: orders-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: orders_management
+      MYSQL_DATABASE_TEST: orders_management_testing
+      MYSQL_ROOT_PASSWORD: orders_password
+      MYSQL_PASSWORD: orders_password
+      MYSQL_USER: orders_user
+      SERVICE_TAGS: dev
+      SERVICE_NAME: mysql
+    ports:
+      - "3307:3306"
+    volumes:
+      - dbdata:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - orders-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 5s
+      retries: 10
+    command: --default-authentication-plugin=mysql_native_password
+
+  # phpMyAdmin Service
+  phpmyadmin:
+    image: arm64v8/phpmyadmin:latest
+    container_name: orders-phpmyadmin
+    environment:
+      PMA_HOST: db
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "8081:80"
+    networks:
+      - orders-network
+
+networks:
+  orders-network:
+    driver: bridge
+
+volumes:
+  dbdata:
+    driver: local
